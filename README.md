@@ -205,3 +205,6 @@ Al subir un archivo se pueden agregar entre 1 y 3 etiquetas (letras, números, g
 | SEC-10 | TLS en producción documentado | ✅ |
 
 Ver `docs/reporte-seguridad.md` para el detalle de cada control.
+ 
+## Estado del proyecto 
+Sprint 1 completado. Endpoint POST /api/upload/presigned-url funcionando. 
