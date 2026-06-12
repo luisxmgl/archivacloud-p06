@@ -1,0 +1,26 @@
+# Credenciales y variables de entorno — NUNCA subir al repo
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
