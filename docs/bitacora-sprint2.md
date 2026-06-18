@@ -39,3 +39,4 @@ Revisar todos los controles SEC-01 a SEC-10. Ejecutar `pip-audit` y `npm audit`.
 **Firmas (ambos integrantes):** &nbsp;&nbsp; __________________________ &nbsp;&nbsp;&nbsp;&nbsp; __________________________
 
 **Firma docente:** &nbsp;&nbsp; __________________________
+ 
