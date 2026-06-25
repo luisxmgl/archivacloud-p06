@@ -1,6 +1,8 @@
 import os
 import re
+import uuid
 import logging
+from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +47,38 @@ def get_s3_client():
     )
 
 
+# Import the boto3 library to interact with AWS services
+# pip install boto3
+def upload_dynamodb(data):
+    # Create a session using your AWS credentials
+    session = boto3.Session(
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        aws_session_token=os.getenv("AWS_SESSION_TOKEN"),
+        region_name=os.getenv("AWS_REGION", "us-east-1")
+    )
+    # Initialize a DynamoDB resource
+    dynamodb = session.resource('dynamodb')
+    # Reference the DynamoDB table
+    table = dynamodb.Table('database_dynamo')
+
+    # Upload the data to the DynamoDB table
+    for item in data:
+        id_tabla = item['id_tabla']
+        nombre = item['nombre_proyecto']
+        descripcion = item['descripcion']
+        # Put the item into the DynamoDB table
+        table.put_item(
+            # Define the item to be inserted
+            Item={
+                'id_tabla': id_tabla,
+                'nombre_proyecto': nombre,
+                'descripcion': descripcion
+            }
+        )
+    print("Data uploaded successfully to DynamoDB.")
+
+
 def sanitize_filename(name: str) -> str:
     name = re.sub(r"[^\w\.\-]", "_", name)
     name = re.sub(r"\.{2,}", ".", name)
@@ -69,19 +103,19 @@ class PresignedUrlRequest(BaseModel):
     @classmethod
     def validate_size(cls, v: int) -> int:
         if v > MAX_SIZE_BYTES:
-            raise ValueError(f"El archivo supera el límite de {MAX_SIZE_MB} MB")
+            raise ValueError(f"El archivo supera el limite de {MAX_SIZE_MB} MB")
         if v <= 0:
-            raise ValueError("Tamaño de archivo inválido")
+            raise ValueError("Tamano de archivo invalido")
         return v
 
     @field_validator("tags")
     @classmethod
     def validate_tags(cls, v: list) -> list:
         if len(v) > 3:
-            raise ValueError("Se permiten máximo 3 etiquetas")
+            raise ValueError("Se permiten maximo 3 etiquetas")
         for tag in v:
             if not VALID_TAG_RE.match(tag):
-                raise ValueError(f"Etiqueta inválida: '{tag}'. Solo letras, números, guiones y guiones bajos (máx. 30 caracteres)")
+                raise ValueError(f"Etiqueta invalida: '{tag}'")
         return [t.lower().strip() for t in v]
 
 
@@ -98,8 +132,6 @@ def create_presigned_url(body: PresignedUrlRequest):
         raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
 
     key = f"{UPLOAD_PREFIX}{safe_name}"
-
-    # Encode tags as S3 metadata (joined, max 3)
     tags_value = ",".join(body.tags) if body.tags else ""
 
     s3 = get_s3_client()
@@ -118,6 +150,19 @@ def create_presigned_url(body: PresignedUrlRequest):
     except ClientError as e:
         logger.error("Error generando presigned URL: %s", e)
         raise HTTPException(status_code=500, detail="No se pudo generar la URL de subida")
+
+    # Guardar registro en DynamoDB usando el patron de la profesora
+    try:
+        data_to_upload = [
+            {
+                'id_tabla': str(uuid.uuid4()),
+                'nombre_proyecto': safe_name,
+                'descripcion': f"Archivo subido - tags: {tags_value or 'ninguna'} - fecha: {datetime.utcnow().isoformat()}"
+            }
+        ]
+        upload_dynamodb(data_to_upload)
+    except Exception as e:
+        logger.error("Error guardando en DynamoDB: %s", e)
 
     return {
         "presignedUrl": presigned_url,
@@ -140,7 +185,6 @@ def list_files(tag: Optional[str] = None):
                 if file_key == UPLOAD_PREFIX:
                     continue
 
-                # Fetch metadata to get tags
                 try:
                     head = s3.head_object(Bucket=BUCKET_NAME, Key=file_key)
                     raw_tags = head.get("Metadata", {}).get("tags", "")
@@ -148,7 +192,6 @@ def list_files(tag: Optional[str] = None):
                 except ClientError:
                     tags = []
 
-                # Filter by tag if requested
                 if tag and tag.lower() not in tags:
                     continue
 
@@ -167,10 +210,29 @@ def list_files(tag: Optional[str] = None):
         raise HTTPException(status_code=500, detail="No se pudo obtener la lista de archivos")
 
 
+@app.get("/api/registros")
+def list_registros():
+    """Lista todos los registros guardados en DynamoDB."""
+    try:
+        session = boto3.Session(
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            aws_session_token=os.getenv("AWS_SESSION_TOKEN"),
+            region_name=os.getenv("AWS_REGION", "us-east-1")
+        )
+        dynamodb = session.resource('dynamodb')
+        table = dynamodb.Table('database_dynamo')
+        response = table.scan()
+        return {"registros": response.get("Items", []), "count": response.get("Count", 0)}
+    except ClientError as e:
+        logger.error("Error consultando DynamoDB: %s", e)
+        raise HTTPException(status_code=500, detail="No se pudo obtener los registros")
+
+
 @app.delete("/api/files/{key:path}")
 def delete_file(key: str = Path(...)):
     if not key.startswith(UPLOAD_PREFIX):
-        raise HTTPException(status_code=400, detail="Ruta de archivo inválida")
+        raise HTTPException(status_code=400, detail="Ruta de archivo invalida")
 
     s3 = get_s3_client()
     try:
