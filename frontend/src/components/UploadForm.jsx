@@ -20,7 +20,6 @@ export default function UploadForm({ onUploadSuccess }) {
     setError("");
     setSuccess("");
     if (!selected) return;
-
     const ext = selected.name.split(".").pop().toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       setError(`Solo se permiten archivos ${ALLOWED_EXTENSIONS.join(", ").toUpperCase()}.`);
@@ -86,9 +85,12 @@ export default function UploadForm({ onUploadSuccess }) {
       inputRef.current.value = "";
       onUploadSuccess();
     } catch (err) {
-      const msg =
-        err?.response?.data?.detail ||
-        "No se pudo completar la subida. Intenta de nuevo.";
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map((e) => e.msg).join(", ")
+        : typeof detail === "string"
+        ? detail
+        : "No se pudo completar la subida. Intenta de nuevo.";
       setError(msg);
     } finally {
       setUploading(false);
@@ -98,7 +100,6 @@ export default function UploadForm({ onUploadSuccess }) {
   return (
     <div style={styles.card}>
       <h2 style={styles.title}>Subir archivo</h2>
-
       <form onSubmit={handleUpload} style={styles.form}>
         <label style={styles.label}>Archivo (TXT o MD, máx. 8 MB)</label>
         <input
@@ -108,13 +109,11 @@ export default function UploadForm({ onUploadSuccess }) {
           onChange={handleFileChange}
           style={styles.fileInput}
         />
-
         {file && (
           <p style={styles.fileInfo}>
             {file.name} — {(file.size / 1024).toFixed(1)} KB
           </p>
         )}
-
         <label style={styles.label}>
           Etiquetas (hasta 3) — presiona Enter para agregar
         </label>
@@ -137,7 +136,6 @@ export default function UploadForm({ onUploadSuccess }) {
             Agregar
           </button>
         </div>
-
         {tags.length > 0 && (
           <div style={styles.tagList}>
             {tags.map((t) => (
@@ -155,17 +153,14 @@ export default function UploadForm({ onUploadSuccess }) {
             ))}
           </div>
         )}
-
         {uploading && (
           <div style={styles.progressWrapper}>
             <div style={{ ...styles.progressBar, width: `${progress}%` }} />
             <span style={styles.progressLabel}>{progress}%</span>
           </div>
         )}
-
         {error && <p style={styles.error}>{error}</p>}
         {success && <p style={styles.successMsg}>{success}</p>}
-
         <button
           type="submit"
           disabled={uploading || !file}
